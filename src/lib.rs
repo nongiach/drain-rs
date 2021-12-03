@@ -22,18 +22,48 @@
 //!             /       \
 //! [Node * is online] [Node * going offline] //the individual text templates for this simple case
 #![warn(missing_debug_implementations, rust_2018_idioms, missing_docs)]
+
+mod wildcard;
+
+// use crate::wildcard;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
+// A wildcard is used to say that this token can be of any values
+// For the purpose of the algorithm we store all encountered values
+// so they can be analyzed to propose the correct grok pattern
 #[derive(Eq, PartialEq, Hash, Debug)]
 enum Token {
-    WildCard,
+    WildCard(BTreeSet<String>),
     Val(String),
+}
+
+impl Token {
+    pub fn new_wildcard(init_string: String) -> Self {
+        let mut wildcard_values = BTreeSet::<String>::new();
+        wildcard_values.insert(init_string);
+        Token::WildCard(wildcard_values)
+    }
+    pub fn new_wildcard_from_token(init_token: Token) -> Self {
+        match init_token {
+            Token::Val(init_string) => Token::new_wildcard(init_string),
+            _ => unreachable!("This code should never be reached"),
+        }
+    }
+    pub fn new_empty_wildcard() -> Self {
+        Token::WildCard(BTreeSet::new())
+    }
+    pub fn is_wildcard(&self) -> bool {
+        match self {
+            Self::WildCard(_) => true,
+            Self::Val(_) => false,
+        }
+    }
 }
 
 struct TokenVisitor;
@@ -49,7 +79,7 @@ impl<'de> Visitor<'de> for TokenVisitor {
         E: de::Error,
     {
         if value == "<*>" {
-            Ok(Token::WildCard)
+            Ok(Token::new_empty_wildcard())
         } else {
             Ok(Token::Val(String::from(value)))
         }
@@ -78,7 +108,7 @@ impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Token::Val(s) => write!(f, "{}", s.as_str()),
-            Token::WildCard => write!(f, "<*>"),
+            Token::WildCard(_) => write!(f, "<*>"),
         }
     }
 }
@@ -86,7 +116,7 @@ impl fmt::Display for Token {
 impl std::clone::Clone for Token {
     fn clone(&self) -> Self {
         match self {
-            Token::WildCard => Token::WildCard,
+            Token::WildCard(s) => Token::WildCard(s.clone()),
             Token::Val(s) => Token::Val(s.clone()),
         }
     }
@@ -167,7 +197,7 @@ impl LogCluster {
         for (pattern, token) in self.log_tokens.iter().zip(log.iter()) {
             if token == pattern {
                 exact_similarity += 1.0;
-            } else if *pattern == Token::WildCard {
+            } else if (*pattern).is_wildcard() {
                 approximate_similarity += 1;
             }
         }
@@ -177,16 +207,29 @@ impl LogCluster {
         }
     }
 
-    fn add_log(&mut self, log: &[Token]) {
+    fn add_log(&mut self, log: &[Token]) -> &LogCluster {
+        // update log cluster if we detect variable parts
         for (i, token) in log.iter().enumerate() {
-            if token != &Token::WildCard {
-                let other_token = &self.log_tokens[i];
-                if token != other_token {
-                    self.log_tokens[i] = Token::WildCard;
+            if !token.is_wildcard() {
+                // check if the current log_line token is the different from the logcluster tokens
+                if token != &self.log_tokens[i] {
+                    self.log_tokens[i] = Token::new_wildcard_from_token(token.clone());
                 }
             }
         }
         self.num_matched += 1;
+        self
+    }
+    fn extract_variables(&self, log: &[Token]) -> Vec<String> {
+        // Extract values of the variable parts into a hashmap
+        let mut variables = vec![];
+        for (i, token) in log.iter().enumerate() {
+            if self.log_tokens[i].is_wildcard() {
+                println!("{}", token);
+                variables.push(token.to_string());
+            }
+        }
+        variables
     }
 }
 
@@ -236,7 +279,8 @@ impl Leaf {
                     self.log_groups
                         .get_mut(gas.group_index)
                         .unwrap_or_else(|| panic!("bad log group index [{}]", gas.group_index))
-                        .add_log(log_tokens);
+                        .add_log(log_tokens)
+                        .extract_variables(log_tokens);
                     self.log_groups.get(gas.group_index)
                 }
             }
@@ -324,12 +368,12 @@ impl Node {
         let token = match &log_tokens[depth] {
             Token::Val(s) => {
                 if s.chars().any(|c| c.is_numeric()) {
-                    Token::WildCard
+                    Token::new_wildcard("WithNum42".to_string())
                 } else {
                     Token::Val(s.clone())
                 }
             }
-            Token::WildCard => Token::WildCard,
+            Token::WildCard(_) => Token::new_empty_wildcard(),
         };
         if depth == log_tokens.len() - 1 || depth == *max_depth as usize {
             if let Node::Inner(node) = self {
@@ -346,7 +390,7 @@ impl Node {
                 let owned_token = if !inner.children.contains_key(&token)
                     && inner.children.len().ge(&(*max_children as usize))
                 {
-                    Token::WildCard
+                    Token::new_empty_wildcard()
                 } else {
                     token
                 };
@@ -518,7 +562,7 @@ impl DrainTree {
                 {
                     Some(Some(matches)) => match matches.iter().next() {
                         Some((name, _pattern)) => Token::Val(format!("<{}>", name)),
-                        None => Token::WildCard,
+                        None => Token::new_empty_wildcard(),
                     },
                     _ => Token::Val(String::from(t)),
                 }
@@ -598,7 +642,8 @@ impl DrainTree {
             processed_line.unwrap_or_else(|| log_line.to_string()),
         );
         let len = tokens.len();
-        self.root
+        let log_cluster_option = self
+            .root
             .entry(len)
             .or_insert_with(|| Node::inner(0))
             .add_child_recur(
@@ -607,7 +652,12 @@ impl DrainTree {
                 &self.max_children,
                 &self.min_similarity,
                 tokens.as_slice(),
-            )
+            );
+        if let Some(log_cluster) = log_cluster_option {
+            println!("log_cluster => {}", log_cluster);
+            println!("log_cluster => {}", log_cluster.as_string());
+        }
+        log_cluster_option
     }
 
     /// Grab all the current log clusters

@@ -1,4 +1,5 @@
 extern crate drain_rs;
+use drain_rs::grok_generator::GrokGenerator;
 use grok;
 use std::env;
 use std::fs;
@@ -37,9 +38,17 @@ pub fn main() {
         }
     }
     // drain.log_groups().iter().for_each(|f| println!("{}", *f));
-    drain
-        .log_groups()
-        .iter()
-        .for_each(|f| println!("{}", f.as_detailed_string()));
+    // drain
+    //     .log_groups()
+    //     .iter()
+    //     .for_each(|f| println!("{}", f.as_detailed_string()));
+
+    // post processing
     // println!("{}", drain);
+    let grok_generator = GrokGenerator::new_with_base_patterns();
+
+    drain.log_groups().iter().for_each(|log_cluster| {
+        println!("{}", log_cluster.as_detailed_string());
+        log_cluster.detect_best_grok(&grok_generator);
+    });
 }

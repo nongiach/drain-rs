@@ -23,7 +23,7 @@
 //! [Node * is online] [Node * going offline] //the individual text templates for this simple case
 #![warn(missing_debug_implementations, rust_2018_idioms, missing_docs)]
 
-mod grok_generator;
+pub mod grok_generator;
 mod log_cluster;
 mod token;
 

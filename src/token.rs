@@ -1,3 +1,4 @@
+use crate::grok_generator::GrokGenerator;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeSet;
@@ -51,6 +52,26 @@ impl Token {
                 let vec = s.iter().collect::<Vec<&String>>();
                 format!("<** {:?} **>", vec)
             }
+        }
+    }
+
+    pub fn as_string_vector(&self) -> Option<Vec<String>> {
+        match self {
+            Token::Val(_) => None,
+            Token::WildCard(s) => Some(s.clone().into_iter().collect::<Vec<String>>()),
+        }
+    }
+
+    pub fn detect_best_grok(&self, grok_generator: &GrokGenerator) -> String {
+        match self {
+            Token::Val(constant_value) => constant_value.to_owned(),
+            _ => match &self.as_string_vector() {
+                Some(string_vector) => {
+                    grok_generator.detect_grok_for_a_list_of_string(&string_vector)
+                }
+                None => None,
+            }
+            .unwrap_or("<unknown>".to_string()),
         }
     }
 }

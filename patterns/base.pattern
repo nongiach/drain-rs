@@ -1,18 +1,4 @@
-USERNAME [a-zA-Z0-9_-]+
-USER %{USERNAME}
-INT (?:[+-]?(?:[0-9]+))
-BASE10NUM (?<![0-9.+-])(?>[+-]?(?:(?:[0-9]+(?:\.[0-9]+)?)|(?:\.[0-9]+)))
-NUMBER (?:%{BASE10NUM})
-BASE16NUM (?<![0-9A-Fa-f])(?:[+-]?(?:0x)?(?:[0-9A-Fa-f]+))
-BASE16FLOAT \b(?<![0-9A-Fa-f.])(?:[+-]?(?:0x)?(?:(?:[0-9A-Fa-f]+(?:\.[0-9A-Fa-f]*)?)|(?:\.[0-9A-Fa-f]+)))\b
 
-POSINT \b(?:[0-9]+)\b
-WORD \b\w+\b
-NOTSPACE \S+
-DATA .*?
-GREEDYDATA .*
-#QUOTEDSTRING (?:(?<!\\)(?:"(?:\\.|[^\\"])*"|(?:'(?:\\.|[^\\'])*')|(?:`(?:\\.|[^\\`])*`)))
-QUOTEDSTRING (?:(?<!\\)(?:"(?>[^\\"]+|\\.)*")|(?:'(?>[^\\']+|\\.)*')|(?:`(?>[^\\`]+|\\.)*`))
 
 # Networking
 MAC (?:%{CISCOMAC}|%{WINDOWSMAC}|%{COMMONMAC})
@@ -89,3 +75,19 @@ QS %{QUOTEDSTRING}
 # Log formats
 SYSLOGBASE %{SYSLOGTIMESTAMP:timestamp} (?:%{SYSLOGFACILITY} )?%{SYSLOGHOST:logsource} %{SYSLOGPROG}:
 COMBINEDAPACHELOG %{IPORHOST:clientip} %{USER:ident} %{USER:auth} \[%{HTTPDATE:timestamp}\] "%{WORD:verb} %{URIPATHPARAM:request} HTTP/%{NUMBER:httpversion}" %{NUMBER:response} (?:%{NUMBER:bytes}|-) "(?:%{URI:referrer}|-)" %{QS:agent}
+
+USERNAME [a-zA-Z0-9_-]+
+USER %{USERNAME}
+INT (?:[+-]?(?:[0-9]+))
+BASE10NUM (?<![0-9.+-])(?>[+-]?(?:(?:[0-9]+(?:\.[0-9]+)?)|(?:\.[0-9]+)))
+NUMBER (?:%{BASE10NUM})
+BASE16NUM (?<![0-9A-Fa-f])(?:[+-]?(?:0x)?(?:[0-9A-Fa-f]+))
+BASE16FLOAT \b(?<![0-9A-Fa-f.])(?:[+-]?(?:0x)?(?:(?:[0-9A-Fa-f]+(?:\.[0-9A-Fa-f]*)?)|(?:\.[0-9A-Fa-f]+)))\b
+
+POSINT \b(?:[0-9]+)\b
+WORD \b\w+\b
+NOTSPACE \S+
+DATA .*?
+GREEDYDATA .*
+#QUOTEDSTRING (?:(?<!\\)(?:"(?:\\.|[^\\"])*"|(?:'(?:\\.|[^\\'])*')|(?:`(?:\\.|[^\\`])*`)))
+QUOTEDSTRING (?:(?<!\\)(?:"(?>[^\\"]+|\\.)*")|(?:'(?>[^\\']+|\\.)*')|(?:`(?>[^\\`]+|\\.)*`))

@@ -1,3 +1,4 @@
+use crate::grok_generator::GrokGenerator;
 use crate::token::Token;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -101,6 +102,14 @@ impl LogCluster {
             }
         }
         variables
+    }
+
+    pub fn detect_best_grok(&self, grok_generator: &GrokGenerator) -> Option<String> {
+        self.log_tokens
+            .iter()
+            .for_each(|token| print!("{} ", token.detect_best_grok(&grok_generator)));
+        println!("#");
+        Some("test".to_string())
     }
 }
 

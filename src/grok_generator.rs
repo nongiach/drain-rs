@@ -1,8 +1,6 @@
 use crate::log_cluster::LogCluster;
 use grok;
 use grok::Pattern;
-use std::collections::HashMap;
-
 // a build.rs generates patterns.rs at compilation time
 // it contains all GROK base patterns loaded here
 include!(concat!(env!("OUT_DIR"), "/patterns.rs"));
@@ -12,31 +10,55 @@ pub fn base_patterns<'a>() -> &'a [(&'a str, &'a str)] {
     PATTERNS
 }
 
+/// Check if the pattern is a good one that we can trust
+pub fn is_a_good_pattern<'a>(pattern: &'a str) -> bool {
+    let good_patterns = vec![
+        "PATH",
+        "URI",
+        "DATE",
+        "MAC",
+        "IPORHOST",
+        "HOSTPORT",
+        "USERNAME",
+        "BASE16NUM",
+        "SYSLOGTIMESTAMP",
+        "QS",
+    ];
+    if good_patterns.contains(&pattern) {
+        true
+    } else {
+        false
+    }
+}
+
 /// stores all compiled patterns at one place
 #[derive(Debug)]
 pub struct GrokGenerator {
-    grok: grok::Grok,                            // the grok processor
-    compiled_patterns: HashMap<String, Pattern>, // all grok compiled pattern pattern_name: Pattern
+    grok: grok::Grok,                          // the grok processor
+    compiled_patterns: Vec<(String, Pattern)>, // all grok compiled pattern pattern_name: Pattern
 }
 
 impl GrokGenerator {
     /// generates a GrokGenerator initialized with the base patterns from the patterns folder
     pub fn new_with_base_patterns() -> Self {
         let mut grok = grok::Grok::empty();
-        let mut compiled_patterns = HashMap::new();
+        let mut compiled_patterns = Vec::new();
 
         // load base patterns
         for &(name, pattern_definition) in base_patterns() {
             grok.insert_definition(name, pattern_definition);
         }
+
         // compile base patterns
         for &(name, _) in base_patterns() {
             // compiled_patterns.push(grok.compile("%{USERNAME}", false).unwrap());
-            let grok_pattern_name = format!("%{{{}}}", name);
-            compiled_patterns.insert(
-                grok_pattern_name.to_owned(),
-                grok.compile(&grok_pattern_name, false).unwrap(),
-            );
+            if is_a_good_pattern(name) {
+                let grok_pattern_name = format!("^%{{{}}}", name);
+                compiled_patterns.push((
+                    grok_pattern_name.to_owned(),
+                    grok.compile(&grok_pattern_name, false).unwrap(),
+                ));
+            }
         }
 
         GrokGenerator {
@@ -55,7 +77,10 @@ impl GrokGenerator {
         strings
             .iter()
             .filter(|string| match pattern.match_against(string) {
-                Some(matches) => matches.len() > 0,
+                Some(matches) => {
+                    println!("matches => {:?}", matches);
+                    matches.len() > 0
+                }
                 None => false,
             })
             .count()

@@ -48,7 +48,7 @@ pub fn main() {
     let grok_generator = GrokGenerator::new_with_base_patterns();
 
     drain.log_groups().iter().for_each(|log_cluster| {
-        println!("{}", log_cluster.as_detailed_string());
+        // println!("~~ {}", log_cluster.as_detailed_string());
         log_cluster.detect_best_grok(&grok_generator);
     });
 }

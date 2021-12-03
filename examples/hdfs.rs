@@ -11,15 +11,16 @@ pub fn main() {
         "blk_(|-)[0-9]+",     //blockid
         "%{IPV4:ip_address}", //IP
         "%{NUMBER:number}",   //Num
+                              // "\\s+",               //string
     ];
     // Build new drain tree
     let mut drain = drain_rs::DrainTree::new()
         .filter_patterns(filter_patterns)
-        .max_depth(4)
-        .max_children(100)
-        .min_similarity(0.5)
+        .max_depth(50)
+        .max_children(4)
+        .min_similarity(0.4)
         // HDFS log pattern, variable format printout in the content section
-        .log_pattern("%{NUMBER:date} %{NUMBER:time} %{NUMBER:proc} %{LOGLEVEL:level} %{DATA:component}: %{GREEDYDATA:content}", "content")
+        // .log_pattern("%{NUMBER:date} %{NUMBER:time} %{NUMBER:proc} %{LOGLEVEL:level} %{DATA:component}: %{GREEDYDATA:content}", "content")
         // Compile all the grok patterns so that they can be used
         .build_patterns(&mut g);
     let filename = env::args()
@@ -32,4 +33,5 @@ pub fn main() {
         }
     }
     drain.log_groups().iter().for_each(|f| println!("{}", *f));
+    // println!("{}", drain);
 }

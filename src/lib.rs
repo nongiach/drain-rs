@@ -180,7 +180,7 @@ impl LogCluster {
     fn add_log(&mut self, log: &[Token]) {
         for (i, token) in log.iter().enumerate() {
             if token != &Token::WildCard {
-                let other_token = &log[i];
+                let other_token = &self.log_tokens[i];
                 if token != other_token {
                     self.log_tokens[i] = Token::WildCard;
                 }
@@ -202,6 +202,8 @@ struct GroupAndSimilarity {
 
 impl Leaf {
     fn best_group(&self, log_tokens: &[Token]) -> Option<GroupAndSimilarity> {
+        // find the best group for the currently analyzed log_tokens
+        // no cache implemented here
         let mut max_similarity = self.log_groups.get(0)?.similarity(log_tokens);
         let mut group_index: usize = 0;
         for i in 1..self.log_groups.len() {
@@ -407,7 +409,8 @@ impl Default for DrainTree {
             overall_pattern: None,
             overall_pattern_str: None,
             drain_field: None,
-        }    }
+        }
+    }
 }
 
 impl DrainTree {
@@ -503,6 +506,7 @@ impl DrainTree {
     }
 
     fn process(filter_patterns: &[grok::Pattern], log_line: String) -> Vec<Token> {
+        // preprocessing to replace user defined regex in the log_line
         log_line
             .split(' ')
             .map(|t| t.trim())
@@ -513,10 +517,10 @@ impl DrainTree {
                     .find(|o| o.is_some())
                 {
                     Some(Some(matches)) => match matches.iter().next() {
-                            Some((name, _pattern)) => Token::Val(format!("<{}>", name)),
-                            None => Token::WildCard,
-                        },
-                    _ => Token::Val(String::from(t))
+                        Some((name, _pattern)) => Token::Val(format!("<{}>", name)),
+                        None => Token::WildCard,
+                    },
+                    _ => Token::Val(String::from(t)),
                 }
             })
             .collect()
@@ -527,20 +531,24 @@ impl DrainTree {
         child: &'a Node,
         processed_log: &[Token],
     ) -> Option<&'a LogCluster> {
+        // find the correct node a level 2 using split token strategy
         let mut current_node = Some(child);
         for t in processed_log {
+            // It travers all nodes level that match the all starts tokens
             if let Some(Node::Inner(inner)) = current_node {
-                    current_node = inner.children.get(t);
+                current_node = inner.children.get(t);
             }
         }
+        // if a leaf was found, then fint the best group
         if let Some(Node::Leaf(leaf)) = current_node {
-                let gas = leaf.best_group(processed_log)?;
-                return Some(&leaf.log_groups[gas.group_index]);
+            let gas = leaf.best_group(processed_log)?;
+            return Some(&leaf.log_groups[gas.group_index]);
         }
         None
     }
 
     fn log_group_for_tokens(&self, processed_log: &[Token]) -> Option<&LogCluster> {
+        // retrieve the first node using preprocessed token list len, for level 1
         let n = self.root.get(&processed_log.len())?;
         self.dig_inner_prefix_tree(n, processed_log)
     }

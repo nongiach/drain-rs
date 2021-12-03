@@ -23,233 +23,19 @@
 //! [Node * is online] [Node * going offline] //the individual text templates for this simple case
 #![warn(missing_debug_implementations, rust_2018_idioms, missing_docs)]
 
-mod wildcard;
+mod grok_generator;
+mod log_cluster;
+mod token;
 
 // use crate::wildcard;
-use serde::de::{self, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use log_cluster::{GroupSimilarity, LogCluster};
+use token::Token;
+
+use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
-use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-
-// A wildcard is used to say that this token can be of any values
-// For the purpose of the algorithm we store all encountered values
-// so they can be analyzed to propose the correct grok pattern
-#[derive(Eq, PartialEq, Hash, Debug)]
-enum Token {
-    WildCard(BTreeSet<String>),
-    Val(String),
-}
-
-impl Token {
-    pub fn new_wildcard(init_string: String) -> Self {
-        let mut wildcard_values = BTreeSet::<String>::new();
-        wildcard_values.insert(init_string);
-        Token::WildCard(wildcard_values)
-    }
-    pub fn new_wildcard_from_token(init_token: Token) -> Self {
-        match init_token {
-            Token::Val(init_string) => Token::new_wildcard(init_string),
-            _ => unreachable!("This code should never be reached"),
-        }
-    }
-    pub fn new_empty_wildcard() -> Self {
-        Token::WildCard(BTreeSet::new())
-    }
-    pub fn is_wildcard(&self) -> bool {
-        match self {
-            Self::WildCard(_) => true,
-            Self::Val(_) => false,
-        }
-    }
-    pub fn as_string(&self) -> String {
-        match self {
-            Token::Val(s) => format!("{}", s.as_str()),
-            Token::WildCard(_) => "<*>".to_owned(),
-        }
-    }
-    pub fn as_string_detailed(&self) -> String {
-        match self {
-            Token::Val(s) => format!("{}", s.as_str()),
-            Token::WildCard(s) => {
-                let vec = s.iter().collect::<Vec<&String>>();
-                format!("<** {:?} **>", vec)
-            }
-        }
-    }
-}
-
-struct TokenVisitor;
-impl<'de> Visitor<'de> for TokenVisitor {
-    type Value = Token;
-
-    fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a string")
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        if value == "<*>" {
-            Ok(Token::new_empty_wildcard())
-        } else {
-            Ok(Token::Val(String::from(value)))
-        }
-    }
-}
-
-impl Serialize for Token {
-    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(self.to_string().as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for Token {
-    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_str(TokenVisitor)
-    }
-}
-
-impl fmt::Display for Token {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Token::Val(s) => write!(f, "{}", s.as_str()),
-            Token::WildCard(_) => write!(f, "<*>"),
-        }
-    }
-}
-
-impl std::clone::Clone for Token {
-    fn clone(&self) -> Self {
-        match self {
-            Token::WildCard(s) => Token::WildCard(s.clone()),
-            Token::Val(s) => Token::Val(s.clone()),
-        }
-    }
-}
-
-#[derive(PartialEq)]
-struct GroupSimilarity {
-    approximate_similarity: u32,
-    exact_similarity: f32,
-}
-
-impl core::cmp::PartialOrd for GroupSimilarity {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match self.exact_similarity.partial_cmp(&other.exact_similarity) {
-            Some(order) => match order {
-                Ordering::Equal => self
-                    .approximate_similarity
-                    .partial_cmp(&other.approximate_similarity),
-                Ordering::Less => Some(Ordering::Less),
-                Ordering::Greater => Some(Ordering::Greater),
-            },
-            None => None,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-/// Represents a cluster of logs
-pub struct LogCluster {
-    // The tokens representing this unique cluster
-    log_tokens: Vec<Token>,
-    // The number logs matched
-    num_matched: u64,
-}
-
-impl fmt::Display for LogCluster {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}, count [{}] ",
-            self.log_tokens
-                .iter()
-                .map(|t| t.to_string())
-                .collect::<Vec<String>>()
-                .join(" "),
-            self.num_matched
-        )
-    }
-}
-
-impl LogCluster {
-    fn new(log_tokens: Vec<Token>) -> LogCluster {
-        LogCluster {
-            log_tokens,
-            num_matched: 1,
-        }
-    }
-
-    /// How many logs have been matched in this cluster
-    pub fn num_matched(&self) -> u64 {
-        self.num_matched
-    }
-
-    /// Grab the current token strings
-    pub fn as_string(&self) -> String {
-        self.log_tokens
-            .iter()
-            .map(|t| t.to_string())
-            .collect::<Vec<String>>()
-            .join(" ")
-    }
-
-    fn similarity(&self, log: &[Token]) -> GroupSimilarity {
-        let len = self.log_tokens.len() as f32;
-        let mut approximate_similarity: u32 = 0;
-        let mut exact_similarity: f32 = 0.0;
-
-        for (pattern, token) in self.log_tokens.iter().zip(log.iter()) {
-            if token == pattern {
-                exact_similarity += 1.0;
-            } else if (*pattern).is_wildcard() {
-                approximate_similarity += 1;
-            }
-        }
-        GroupSimilarity {
-            approximate_similarity,
-            exact_similarity: exact_similarity / len,
-        }
-    }
-
-    fn add_log(&mut self, new_log: &[Token]) -> &LogCluster {
-        // update log cluster if we detect variable parts
-        for (new_token, stored_token) in new_log.iter().zip(self.log_tokens.iter_mut()) {
-            if !new_token.is_wildcard() {
-                // check if the current log_line token is the different from the logcluster tokens
-                if new_token != stored_token && !stored_token.is_wildcard() {
-                    *stored_token = Token::new_empty_wildcard();
-                }
-                if let Token::WildCard(btreeset) = stored_token {
-                    btreeset.insert(new_token.to_string());
-                }
-            }
-        }
-        self.num_matched += 1;
-        self
-    }
-    fn extract_variables(&self, log: &[Token]) -> Vec<String> {
-        // Extract values of the variable parts into a hashmap
-        let mut variables = vec![];
-        for (i, token) in log.iter().enumerate() {
-            if self.log_tokens[i].is_wildcard() {
-                println!("{} -> {}", token, self.log_tokens[i].as_string_detailed());
-                variables.push(token.to_string());
-            }
-        }
-        variables
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Leaf {
@@ -297,8 +83,7 @@ impl Leaf {
                     self.log_groups
                         .get_mut(gas.group_index)
                         .unwrap_or_else(|| panic!("bad log group index [{}]", gas.group_index))
-                        .add_log(log_tokens)
-                        .extract_variables(log_tokens);
+                        .add_log(log_tokens);
                     self.log_groups.get(gas.group_index)
                 }
             }
@@ -626,6 +411,7 @@ impl DrainTree {
         Option::Some(String::from(s))
     }
 
+    #[allow(dead_code)]
     fn is_compiled(&self) -> bool {
         self.filter_patterns.len() == self.filter_patterns_str.len()
             && (self.overall_pattern.is_some() == self.overall_pattern_str.is_some())
@@ -660,6 +446,7 @@ impl DrainTree {
             processed_line.unwrap_or_else(|| log_line.to_string()),
         );
         let len = tokens.len();
+        let log_tokens = tokens.as_slice();
         let log_cluster_option = self
             .root
             .entry(len)
@@ -669,11 +456,12 @@ impl DrainTree {
                 &self.max_depth,
                 &self.max_children,
                 &self.min_similarity,
-                tokens.as_slice(),
+                log_tokens,
             );
         if let Some(log_cluster) = log_cluster_option {
-            println!("log_cluster => {}", log_cluster);
-            println!("log_cluster => {}", log_cluster.as_string());
+            log_cluster.extract_variables(log_tokens);
+            // println!("log_cluster => {}", log_cluster);
+            // println!("log_cluster => {}", log_cluster.as_string());
         }
         log_cluster_option
     }

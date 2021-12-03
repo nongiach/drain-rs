@@ -29,12 +29,17 @@ pub fn main() {
     let reader: Box<dyn BufRead> = Box::new(BufReader::new(fs::File::open(filename).unwrap()));
     for line_result in reader.lines() {
         if let Ok(line) = line_result {
-            if let Some(log_cluster) = drain.add_log_line(line.as_str()) {
-                println!("log_line    => {}", line);
-                println!("log_cluster => {}", log_cluster);
+            if let Some(_log_cluster) = drain.add_log_line(line.as_str()) {
+                // println!("log_line    => {}", line);
+                // println!("log_cluster => {}", log_cluster);
+                // log_cluster.extract_variables()
             }
         }
     }
     // drain.log_groups().iter().for_each(|f| println!("{}", *f));
+    drain
+        .log_groups()
+        .iter()
+        .for_each(|f| println!("{}", f.as_detailed_string()));
     // println!("{}", drain);
 }

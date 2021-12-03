@@ -8,10 +8,10 @@ use std::io::{BufRead, BufReader};
 pub fn main() {
     let mut g = grok::Grok::with_patterns();
     let filter_patterns = vec![
-        "blk_(|-)[0-9]+",     //blockid
-        "%{IPV4:ip_address}", //IP
-        "%{NUMBER:number}",   //Num
-                              // "\\s+",               //string
+        "blk_(|-)[0-9]+", //blockid
+                          // "%{IPV4:ip_address}", //IP
+                          // "%{NUMBER:number}",   //Num
+                          // "\\s+",               //string
     ];
     // Build new drain tree
     let mut drain = drain_rs::DrainTree::new()

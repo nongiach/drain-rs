@@ -64,6 +64,21 @@ impl Token {
             Self::Val(_) => false,
         }
     }
+    pub fn as_string(&self) -> String {
+        match self {
+            Token::Val(s) => format!("{}", s.as_str()),
+            Token::WildCard(_) => "<*>".to_owned(),
+        }
+    }
+    pub fn as_string_detailed(&self) -> String {
+        match self {
+            Token::Val(s) => format!("{}", s.as_str()),
+            Token::WildCard(s) => {
+                let vec = s.iter().collect::<Vec<&String>>();
+                format!("<** {:?} **>", vec)
+            }
+        }
+    }
 }
 
 struct TokenVisitor;
@@ -207,13 +222,16 @@ impl LogCluster {
         }
     }
 
-    fn add_log(&mut self, log: &[Token]) -> &LogCluster {
+    fn add_log(&mut self, new_log: &[Token]) -> &LogCluster {
         // update log cluster if we detect variable parts
-        for (i, token) in log.iter().enumerate() {
-            if !token.is_wildcard() {
+        for (new_token, stored_token) in new_log.iter().zip(self.log_tokens.iter_mut()) {
+            if !new_token.is_wildcard() {
                 // check if the current log_line token is the different from the logcluster tokens
-                if token != &self.log_tokens[i] {
-                    self.log_tokens[i] = Token::new_wildcard_from_token(token.clone());
+                if new_token != stored_token && !stored_token.is_wildcard() {
+                    *stored_token = Token::new_empty_wildcard();
+                }
+                if let Token::WildCard(btreeset) = stored_token {
+                    btreeset.insert(new_token.to_string());
                 }
             }
         }
@@ -225,7 +243,7 @@ impl LogCluster {
         let mut variables = vec![];
         for (i, token) in log.iter().enumerate() {
             if self.log_tokens[i].is_wildcard() {
-                println!("{}", token);
+                println!("{} -> {}", token, self.log_tokens[i].as_string_detailed());
                 variables.push(token.to_string());
             }
         }

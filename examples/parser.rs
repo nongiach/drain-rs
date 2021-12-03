@@ -4,7 +4,7 @@ use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader};
 
-/// Read in an HDFS formatted log and print out the log clusters
+/// Read in a formatted log and print out the log clusters
 pub fn main() {
     let mut g = grok::Grok::with_patterns();
     let filter_patterns = vec![
